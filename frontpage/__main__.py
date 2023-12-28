@@ -1,12 +1,12 @@
+import datetime as dt
 import os
-import datetime as dt 
-from pathlib import Path 
+from pathlib import Path
 
 from jinja2 import Template
-from radicli import Radicli, Arg
+from radicli import Arg, Radicli
 
+from .constants import SITE_PATH, TEMPLATE_PATH
 from .utils import console
-from .constants import TEMPLATE_PATH, TRAINED_FOLDER, SITE_PATH
 
 cli = Radicli()
 
@@ -15,14 +15,16 @@ cli = Radicli()
 def download():
     """Download new data."""
     from .download import main as download_data
+
     download_data()
 
 
-@cli.command("index", 
-             kind=Arg(help="Can be lunr/simsity"), 
-             level=Arg(help="Can be sentence/abstract")
+@cli.command(
+    "index",
+    kind=Arg(help="Can be lunr/simsity"),
+    level=Arg(help="Can be sentence/abstract"),
 )
-def index_cli(kind:str, level:str):
+def index_cli(kind: str, level: str):
     """Creates index for annotation."""
     from .datastream import DataStream
 
@@ -33,15 +35,19 @@ def index_cli(kind:str, level:str):
 def preprocess_cli():
     """Dedup and process data for faster processing."""
     from .datastream import DataStream
+
     DataStream().save_clean_download_stream()
 
 
 @cli.command("annotate")
 def annotate():
     """Annotate new examples."""
+
     def run_questions():
         import questionary
-        from .constants import LABELS, DATA_LEVELS
+
+        from .constants import DATA_LEVELS, LABELS
+
         results = {}
         results["label"] = questionary.select(
             "Which label do you want to annotate?",
@@ -63,7 +69,7 @@ def annotate():
             choices=choices,
         ).ask()
 
-        results['setting'] = ''
+        results["setting"] = ""
         if results["tactic"] in ["simsity", "search-engine"]:
             results["setting"] = questionary.text(
                 "What query would you like to use?", ""
@@ -74,16 +80,19 @@ def annotate():
                 "What should the active learning method prefer?",
                 choices=["positive class", "uncertainty", "negative class"],
             ).ask()
-        return results 
-    
+        return results
+
     results = run_questions()
     from .recipe import annotate_prodigy
+
     annotate_prodigy(results)
+
 
 @cli.command("annotprep")
 def annotprep():
     """Prepares data for training."""
     from .datastream import DataStream
+
     DataStream().save_train_stream()
 
 
@@ -92,6 +101,7 @@ def train():
     """Trains a new model on the data."""
     from .datastream import DataStream
     from .modelling import SentenceModel
+
     examples = DataStream().get_train_stream()
     SentenceModel().train(examples=examples).to_disk()
 
@@ -101,6 +111,7 @@ def pretrain():
     """Trains a new featurizer, set-fit style."""
     from .datastream import DataStream
     from .modelling import SentenceModel
+
     examples = DataStream().get_train_stream()
     SentenceModel().pretrain(examples=examples)
 
@@ -109,17 +120,19 @@ def pretrain():
 def stats():
     """Show annotation stats"""
     from .datastream import DataStream
+
     DataStream().show_annot_stats()
 
 
 @cli.command(
-    "build", 
+    "build",
     retrain=Arg("--retrain", "-rt", help="Retrain model?"),
-    prep=Arg("--preprocess", "-pr", help="Preprocess again?")
+    prep=Arg("--preprocess", "-pr", help="Preprocess again?"),
 )
-def build(retrain: bool = False, prep:bool = False):
+def build(retrain: bool = False, prep: bool = False):
     """Build a new site"""
     from .datastream import DataStream
+
     if prep:
         preprocess_cli()
     if retrain:
@@ -132,26 +145,32 @@ def build(retrain: bool = False, prep:bool = False):
     console.log("Site built.")
 
 
-@cli.command("artifact",
+@cli.command(
+    "artifact",
     action=Arg(help="Can be upload/download"),
 )
-def artifact(action:str):
+def artifact(action: str):
     """Upload/download from wandb"""
     import wandb
     from dotenv import load_dotenv
+
     from frontpage.constants import PRETRAINED_FOLDER
+
     load_dotenv()
     run = wandb.init(os.getenv("WANDB_API_KEY"))
+    wandb_project_name = os.getenv("WANDB_PROJECT_NAME", "arxiv-frontpage")
     if action == "upload":
-        artifact = wandb.Artifact(name='custom-sbert-emb', type="model")
+        artifact = wandb.Artifact(name="custom-sbert-emb", type="model")
         artifact.add_dir(local_path=PRETRAINED_FOLDER)
-        run = wandb.init(project="arxiv-frontpage", job_type="upload")
+        run = wandb.init(project=wandb_project_name, job_type="upload")
         run.log_artifact(artifact)
     if action == "download":
         if not PRETRAINED_FOLDER.exists():
-            run = wandb.init(project="arxiv-frontpage", job_type="download")
-            artifact = run.use_artifact('custom-sbert-emb:latest')
-            console.log(f"Could not find {PRETRAINED_FOLDER}. So will download from wandb.")
+            run = wandb.init(project=wandb_project_name, job_type="download")
+            artifact = run.use_artifact("custom-sbert-emb:latest")
+            console.log(
+                f"Could not find {PRETRAINED_FOLDER}. So will download from wandb."
+            )
             artifact.download(PRETRAINED_FOLDER)
         else:
             console.log(f"{PRETRAINED_FOLDER} already exists. Skip wandb download.")
@@ -162,7 +181,9 @@ def search():
     """Annotate new examples."""
     import questionary
     from simsity import load_index
+
     from .modelling import SentenceModel
+
     enc = SentenceModel().encoder
     index = load_index("indices/simsity/sentence", encoder=enc)
     while True:
@@ -170,6 +191,7 @@ def search():
         texts, dists = index.query([query], n=5)
         for t in texts:
             print(t)
+
 
 if __name__ == "__main__":
     cli.run()
